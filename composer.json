@@ -1,0 +1,55 @@
+{
+  "name": "arraypress/wp-s3-signer",
+  "description": "AWS Signature Version 4 signing for S3-compatible object storage in WordPress. Presigned URLs, signed request headers, and a thin WP HTTP API transport. No SDK.",
+  "type": "library",
+  "license": "GPL-2.0-or-later",
+  "homepage": "https://github.com/arraypress/wp-s3-signer",
+  "authors": [
+    {
+      "name": "David Sherlock",
+      "homepage": "https://arraypress.com/"
+    }
+  ],
+  "keywords": [
+    "s3",
+    "sigv4",
+    "signature-v4",
+    "presigned-url",
+    "cloudflare-r2",
+    "backblaze",
+    "digitalocean-spaces",
+    "wasabi",
+    "object-storage",
+    "wordpress"
+  ],
+  "require": {
+    "php": ">=8.2"
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^11.0 || ^12.0 || ^13.0"
+  },
+  "autoload": {
+    "psr-4": {
+      "ArrayPress\\S3Signer\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "ArrayPress\\S3Signer\\Tests\\": "tests/"
+    }
+  },
+  "scripts": {
+    "test": "phpunit"
+  },
+  "config": {
+    "optimize-autoloader": true,
+    "sort-packages": true,
+    "preferred-install": "dist"
+  },
+  "minimum-stability": "stable",
+  "prefer-stable": true,
+  "support": {
+    "issues": "https://github.com/arraypress/wp-s3-signer/issues",
+    "source": "https://github.com/arraypress/wp-s3-signer"
+  }
+}

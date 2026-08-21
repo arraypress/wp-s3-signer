@@ -1,0 +1,15 @@
+# Development files
+/.gitattributes export-ignore
+/.gitignore export-ignore
+/phpunit.xml export-ignore
+
+# Documentation
+/README.md export-ignore
+/CHANGELOG.md export-ignore
+
+# Development directories
+/tests export-ignore
+/.github export-ignore
+
+# Development tooling
+/composer.lock export-ignore
