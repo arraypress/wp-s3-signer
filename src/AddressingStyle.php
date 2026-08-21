@@ -61,12 +61,6 @@ enum AddressingStyle {
 	 * @return bool
 	 */
 	public static function is_dns_compatible( string $bucket ): bool {
-		if ( strlen( $bucket ) < 3 || strlen( $bucket ) > 63 ) {
-			return false;
-		}
-
-		// Lowercase alphanumeric and hyphens, not starting or ending
-		// with a hyphen. Dots are excluded deliberately — see above.
-		return 1 === preg_match( '/^[a-z0-9]([a-z0-9\-]*[a-z0-9])?$/', $bucket );
+		return BucketName::is_dns_compatible( $bucket );
 	}
 }
