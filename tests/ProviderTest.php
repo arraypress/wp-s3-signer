@@ -91,8 +91,9 @@ final class ProviderTest extends TestCase {
 	}
 
 	public function test_an_omitted_region_falls_back_to_the_default(): void {
-		$this->assertSame( 's3.us-west-1.wasabisys.com', Provider::Wasabi->endpoint() );
+		$this->assertSame( 's3.us-east-1.wasabisys.com', Provider::Wasabi->endpoint() );
 		$this->assertSame( 'nyc3.digitaloceanspaces.com', Provider::DigitalOcean->endpoint() );
+		$this->assertSame( 's3.us-west-004.backblazeb2.com', Provider::Backblaze->endpoint() );
 	}
 
 	#[DataProvider( 'signable' )]
