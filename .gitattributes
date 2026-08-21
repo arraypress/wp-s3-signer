@@ -6,6 +6,7 @@
 # Documentation
 /README.md export-ignore
 /CHANGELOG.md export-ignore
+/SECURITY.md export-ignore
 
 # Development directories
 /tests export-ignore
