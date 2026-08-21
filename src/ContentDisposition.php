@@ -216,6 +216,10 @@ final readonly class ContentDisposition {
 		$previous = setlocale( LC_CTYPE, '0' );
 		setlocale( LC_CTYPE, 'C.UTF-8', 'en_US.UTF-8', 'C' );
 
+		// iconv() emits a notice for any character it cannot transliterate,
+		// which is the ordinary case for a filename in a script this locale
+		// does not cover. The false return is checked below.
+		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
 		$result = @iconv( 'UTF-8', 'ASCII//TRANSLIT//IGNORE', $name );
 
 		if ( false !== $previous ) {

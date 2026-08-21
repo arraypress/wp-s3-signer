@@ -36,5 +36,13 @@ jobs:
       - name: Lint
         run: find src tests -name '*.php' -print0 | xargs -0 -n1 -P4 php -l > /dev/null
 
+      - name: WordPress standards
+        # Scoped to the sniffs that catch defects rather than preferences; the
+        # rationale is in phpcs.xml.dist and phpcs-format.xml.dist.
+        if: matrix.php == '8.2'
+        run: |
+          composer lint
+          composer format:check
+
       - name: Tests
         run: vendor/bin/phpunit --colors=always
