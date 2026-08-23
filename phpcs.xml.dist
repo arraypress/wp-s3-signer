@@ -23,5 +23,5 @@
              on around twenty correct lines and finds nothing real. -->
         <exclude name="PHPCompatibility.Variables.ForbiddenThisUseContexts.OutsideObjectContext"/>
     </rule>
-    <config name="testVersion" value="8.2-"/>
+    <config name="testVersion" value="8.3-"/>
 </ruleset>
