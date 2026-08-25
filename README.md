@@ -31,7 +31,8 @@ src/
     Validate.php          every "is this allowed" question
     Headers.php           the canonical form SigV4 signs
     Endpoint.php          host, canonical URI, canonical query
-    Filename.php          basename, extension, byte-safe clamping
+    Filename.php          basename, extension, clamping, transliteration
+    Url.php               reduce anything pasted to a bare host
     ContentDisposition.php  what a header can carry, and the ASCII fallback
     Transport.php         an optional wp_remote_request() bridge
 ```
@@ -47,9 +48,13 @@ checking", and a method name is a better one. A test asserts `Signer` calls
 
 `Filename` holds what is true of a filename whatever it is for.
 `ContentDisposition` holds what is true of a *header*. Clamping a name to two
-hundred bytes without losing its extension is the first; knowing that a
-bidirectional override in a filename is a display-spoofing attack is the
-second.
+hundred bytes without losing its extension is the first, and so is
+transliterating "Симфония.wav" into something readable; knowing that a
+bidirectional override is a display-spoofing attack, and that a quoted-string
+cannot carry an unescaped backslash, is the second.
+
+`ascii_fallback()` is the seam between them and reads as one: reduce the name
+with `Filename::to_ascii()`, then apply what the header imposes.
 
 
 ## Why a signing library

@@ -117,4 +117,91 @@ final class Filename {
 
 		return rtrim( $stem, ' .' ) . $suffix;
 	}
+	/**
+	 * An ASCII version of a name that a person can still read.
+	 *
+	 * Transliterated rather than blanked: Cyrillic, Greek, Han, Kana and
+	 * accented Latin all become something recognisable, so a customer who
+	 * bought "Симфония №5.wav" gets "Simfoniia No5.wav" rather than
+	 * "________.wav". Anything with no Latin representation at all — emoji,
+	 * symbols — is dropped.
+	 *
+	 * Separators are trimmed but a dot is kept, so a name whose stem
+	 * transliterated away entirely is still recognisably ".wav" and the
+	 * caller can decide what to put in front of it.
+	 *
+	 * @since 1.2.0
+	 *
+	 * @param string $name A UTF-8 filename.
+	 *
+	 * @return string
+	 */
+	public static function to_ascii( string $name ): string {
+		$ascii = self::transliterate( $name );
+
+		// Whatever survived that is not printable ASCII becomes '_'.
+		$ascii = (string) preg_replace( '/[^\x20-\x7E]/', '_', $ascii );
+
+		// A long run of underscores is what a blanked-out script looks like.
+		$ascii = (string) preg_replace( '/_{2,}/', '_', $ascii );
+		$ascii = (string) preg_replace( '/\s{2,}/', ' ', $ascii );
+
+		return trim( $ascii, ' _' );
+	}
+
+	/**
+	 * Best-effort script-to-Latin conversion.
+	 *
+	 * Prefers ext-intl's transliterator, which understands Han, Kana,
+	 * Cyrillic, Greek, Arabic and more. Without intl, iconv handles
+	 * accented Latin and drops the rest.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param string $name UTF-8 string.
+	 *
+	 * @return string
+	 */
+	private static function transliterate( string $name ): string {
+		// Building a Transliterator costs roughly ten times as much as
+		// the signature it is helping to produce, so it is built once per
+		// process. `false` is the "tried, unavailable" sentinel, to avoid
+		// paying for the lookup again on every call.
+		static $transliterator = null;
+
+		if ( null === $transliterator ) {
+			$transliterator = class_exists( \Transliterator::class )
+				? ( \Transliterator::create( 'Any-Latin; Latin-ASCII' ) ?? false )
+				: false;
+		}
+
+		if ( false !== $transliterator ) {
+			$result = $transliterator->transliterate( $name );
+
+			if ( false !== $result ) {
+				return $result;
+			}
+		}
+
+		$previous = setlocale( LC_CTYPE, '0' );
+		setlocale( LC_CTYPE, 'C.UTF-8', 'en_US.UTF-8', 'C' );
+
+		// iconv() emits a notice for any character it cannot transliterate,
+		// which is the ordinary case for a filename in a script this locale
+		// does not cover. The false return is checked below.
+		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+		$result = @iconv( 'UTF-8', 'ASCII//TRANSLIT//IGNORE', $name );
+
+		if ( false !== $previous ) {
+			setlocale( LC_CTYPE, $previous );
+		}
+
+		if ( false === $result ) {
+			return $name;
+		}
+
+		// iconv's TRANSLIT emits things like "?" and "'a" for characters
+		// it can only approximate; strip the noise it leaves behind.
+		return (string) preg_replace( '/[?]+/', '', $result );
+	}
 }

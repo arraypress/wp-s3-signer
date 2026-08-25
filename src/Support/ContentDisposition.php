@@ -152,37 +152,30 @@ final readonly class ContentDisposition {
 	}
 
 	/**
-	 * Produce the ASCII-only `filename` fallback.
+	 * The ASCII-only `filename` fallback a quoted-string can carry.
 	 *
-	 * Transliterates rather than blanking: Cyrillic, Greek, Han, Kana and
-	 * accented Latin all become readable ASCII. Anything with no sensible
-	 * Latin representation (emoji, symbols) is dropped, and if that
-	 * leaves nothing the extension is preserved onto a generic stem.
+	 * Two steps, and only the second is this class's business.
+	 *
+	 * Reducing a name to readable ASCII is {@see Filename::to_ascii()} —
+	 * Cyrillic, Greek, Han, Kana and accented Latin all become something a
+	 * person can read, and anything with no Latin representation is dropped.
+	 * That is true of a filename wherever it is going.
+	 *
+	 * What is left here is what a *header* imposes: a quoted-string cannot
+	 * carry an unescaped quote or backslash, and it cannot be empty — a
+	 * `filename=""` is worse than no fallback at all, so a name with nothing
+	 * readable left in its stem becomes `download`, keeping the extension so
+	 * the file still opens in something.
 	 *
 	 * @since 1.0.0
 	 *
 	 * @param string $name Sanitised UTF-8 filename.
 	 *
-	 * @return string ASCII-safe, quoted-string-safe filename.
+	 * @return string ASCII-safe, quoted-string-safe, never empty.
 	 */
 	public static function ascii_fallback( string $name ): string {
-		$ascii = self::transliterate( $name );
+		$ascii = str_replace( self::UNQUOTABLE, '', Filename::to_ascii( $name ) );
 
-		// Whatever survived that isn't printable ASCII becomes '_'.
-		$ascii = (string) preg_replace( '/[^\x20-\x7E]/', '_', $ascii );
-
-		$ascii = str_replace( self::UNQUOTABLE, '', $ascii );
-
-		// Long underscore runs are what a blanked-out script looks like.
-		$ascii = (string) preg_replace( '/_{2,}/', '_', $ascii );
-		$ascii = (string) preg_replace( '/\s{2,}/', ' ', $ascii );
-
-		// Trim separators but keep any dot, so an all-transliterated-away
-		// stem (emoji, symbols) is still recognisable as ".ext" below.
-		$ascii = trim( $ascii, ' _' );
-
-		// Nothing readable left in the stem — keep the extension, and
-		// give it a generic name rather than returning a bare "wav".
 		if ( '' === trim( Filename::stem( $ascii ), ' _.' ) ) {
 			$extension = Filename::extension( '' === $ascii ? $name : $ascii );
 
@@ -190,61 +183,5 @@ final readonly class ContentDisposition {
 		}
 
 		return trim( $ascii, ' _.' );
-	}
-
-	/**
-	 * Best-effort script-to-Latin conversion.
-	 *
-	 * Prefers ext-intl's transliterator, which understands Han, Kana,
-	 * Cyrillic, Greek, Arabic and more. Without intl, iconv handles
-	 * accented Latin and drops the rest.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param string $name UTF-8 string.
-	 *
-	 * @return string
-	 */
-	private static function transliterate( string $name ): string {
-		// Building a Transliterator costs roughly ten times as much as
-		// the signature it is helping to produce, so it is built once per
-		// process. `false` is the "tried, unavailable" sentinel, to avoid
-		// paying for the lookup again on every call.
-		static $transliterator = null;
-
-		if ( null === $transliterator ) {
-			$transliterator = class_exists( \Transliterator::class )
-				? ( \Transliterator::create( 'Any-Latin; Latin-ASCII' ) ?? false )
-				: false;
-		}
-
-		if ( false !== $transliterator ) {
-			$result = $transliterator->transliterate( $name );
-
-			if ( false !== $result ) {
-				return $result;
-			}
-		}
-
-		$previous = setlocale( LC_CTYPE, '0' );
-		setlocale( LC_CTYPE, 'C.UTF-8', 'en_US.UTF-8', 'C' );
-
-		// iconv() emits a notice for any character it cannot transliterate,
-		// which is the ordinary case for a filename in a script this locale
-		// does not cover. The false return is checked below.
-		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
-		$result = @iconv( 'UTF-8', 'ASCII//TRANSLIT//IGNORE', $name );
-
-		if ( false !== $previous ) {
-			setlocale( LC_CTYPE, $previous );
-		}
-
-		if ( false === $result ) {
-			return $name;
-		}
-
-		// iconv's TRANSLIT emits things like "?" and "'a" for characters
-		// it can only approximate; strip the noise it leaves behind.
-		return (string) preg_replace( '/[?]+/', '', $result );
 	}
 }

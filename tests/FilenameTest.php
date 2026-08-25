@@ -112,4 +112,74 @@ final class FilenameTest extends TestCase {
 		$this->assertSame( 'archive.tar', Filename::stem( 'archive.tar.gz' ) );
 		$this->assertSame( 'no-extension', Filename::stem( 'no-extension' ) );
 	}
+	/**
+	 * A name in another script comes back readable, not blanked.
+	 *
+	 * A customer who bought "Симфония №5.wav" should get something they
+	 * recognise rather than "________.wav" — which is what replacing every
+	 * non-ASCII character gives you, and is indistinguishable from a
+	 * corrupted download.
+	 */
+	public function test_another_script_comes_back_readable(): void {
+		if ( ! class_exists( \Transliterator::class ) && ! function_exists( 'iconv' ) ) {
+			$this->markTestSkipped( 'Neither intl nor iconv is available.' );
+		}
+
+		$ascii = Filename::to_ascii( 'Симфония.wav' );
+
+		$this->assertMatchesRegularExpression( '/^[\x20-\x7E]+$/', $ascii );
+		$this->assertStringEndsWith( '.wav', $ascii );
+
+		// Something of the word survived rather than a row of underscores.
+		$this->assertMatchesRegularExpression( '/[A-Za-z]{3,}/', $ascii );
+	}
+
+	/**
+	 * Accented Latin loses its accents rather than its letters.
+	 */
+	public function test_accents_are_dropped_not_the_letters(): void {
+		$ascii = Filename::to_ascii( 'Manuel d\'utilisation café.pdf' );
+
+		$this->assertMatchesRegularExpression( '/^[\x20-\x7E]+$/', $ascii );
+		$this->assertStringContainsString( 'Manuel', $ascii );
+		$this->assertStringContainsString( 'caf', $ascii );
+	}
+
+	/**
+	 * Something with no Latin representation is dropped, not mangled.
+	 */
+	public function test_something_with_no_latin_form_is_dropped(): void {
+		$ascii = Filename::to_ascii( '🎵🎶.wav' );
+
+		$this->assertMatchesRegularExpression( '/^[\x20-\x7E]*$/', $ascii );
+		$this->assertStringEndsWith( '.wav', $ascii );
+	}
+
+	/**
+	 * A run of underscores is collapsed.
+	 *
+	 * A long one is what a blanked-out script looks like, and reads as a
+	 * broken filename rather than a transliterated one.
+	 */
+	public function test_underscore_runs_are_collapsed(): void {
+		$this->assertSame( 'a_b.wav', Filename::to_ascii( "a\u{1F600}\u{1F601}\u{1F602}b.wav" ) );
+	}
+
+	/**
+	 * Separators are trimmed but a dot is kept.
+	 *
+	 * A name whose stem transliterated away entirely is still recognisably
+	 * ".wav", and the caller decides what to put in front of it.
+	 */
+	public function test_a_dot_survives_a_trimmed_name(): void {
+		$this->assertStringEndsWith( '.wav', Filename::to_ascii( '🎵.wav' ) );
+	}
+
+	/**
+	 * Plain ASCII passes through untouched.
+	 */
+	public function test_plain_ascii_is_left_alone(): void {
+		$this->assertSame( 'report-2026.pdf', Filename::to_ascii( 'report-2026.pdf' ) );
+	}
+
 }

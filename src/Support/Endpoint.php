@@ -46,16 +46,13 @@ final class Endpoint {
 	 * @throws InvalidArgumentException When nothing usable remains.
 	 */
 	public static function normalize( string $endpoint ): string {
-		$host = trim( $endpoint );
-		$host = (string) preg_replace( '#^[a-z][a-z0-9+.\-]*://#i', '', $host );
-		$host = explode( '/', $host, 2 )[0];
-		$host = rtrim( $host, '.' );
+		$host = Url::host( $endpoint );
 
 		if ( '' === $host || ! Validate::host( $host ) ) {
 			throw new InvalidArgumentException( 'S3 endpoint must be a bare host, e.g. "s3.eu-west-2.amazonaws.com".' );
 		}
 
-		return strtolower( $host );
+		return $host;
 	}
 
 	/**
