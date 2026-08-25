@@ -29,8 +29,11 @@ namespace ArrayPress\S3Signer;
  *   - `sign_*()` returns a {@see SignedRequest} with the signature in an
  *     `Authorization` header, for calls your server makes itself.
  *
- * Path-style URLs (`host/<bucket>/<key>`) are used throughout. That is
- * R2's default and avoids per-bucket DNS setup; AWS still accepts it.
+ * Where the bucket goes — the path or the hostname — is the provider's
+ * business, and {@see Provider} holds it along with every endpoint and
+ * default region. This class knows how to sign and nothing about who it is
+ * signing for. There used to be five static factories here carrying a
+ * smaller, second copy of that table.
  *
  * Construction is free — no network, no state beyond the credentials.
  *
@@ -38,11 +41,7 @@ namespace ArrayPress\S3Signer;
  *
  *   use ArrayPress\S3Signer\Signer;
  *
- *   $signer = new Signer(
- *       access_key: $key,
- *       secret_key: $secret,
- *       endpoint:   '<account>.r2.cloudflarestorage.com',
- *   );
+ *   $signer = Provider::R2->signer( $key, $secret, account_id: $account );
  *
  *   // 60-second download link, saved as "Album Master.wav"
  *   $url = $signer->presign_get( 'my-bucket', 'masters/a1.wav', 60, 'Album Master.wav' );
@@ -90,10 +89,11 @@ final readonly class Signer {
 	 * Credentials carry `#[\SensitiveParameter]` so they are scrubbed
 	 * from stack traces if anything downstream throws.
 	 *
-	 * Consider the provider factories — {@see self::r2()},
-	 * {@see self::aws()}, {@see self::backblaze()},
-	 * {@see self::digitalocean()}, {@see self::minio()} — which set the
-	 * endpoint and addressing style correctly for you.
+	 * Rarely called directly. {@see Provider} knows every provider's
+	 * endpoint, default region and addressing style, so
+	 * `Provider::R2->signer( $key, $secret, account_id: $id )` is shorter and
+	 * harder to get wrong — and, being an enum case, is a value a settings
+	 * screen can store and enumerate.
 	 *
 	 * @since 1.0.0
 	 *
@@ -142,144 +142,6 @@ final readonly class Signer {
 		}
 
 		$this->endpoint = self::normalize_endpoint( $endpoint );
-	}
-
-	/* ─── Provider factories ────────────────────────────────────────── */
-
-	/**
-	 * Cloudflare R2. Path-style against the account endpoint.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param string   $access_key Access key ID.
-	 * @param string   $secret_key Secret access key.
-	 * @param string   $account_id Cloudflare account id.
-	 * @param int|null $timestamp  Fixed signing time, for tests.
-	 *
-	 * @return self
-	 */
-	public static function r2(
-		#[\SensitiveParameter] string $access_key,
-		#[\SensitiveParameter] string $secret_key,
-		string $account_id,
-		?int $timestamp = null,
-	): self {
-		return new self(
-			$access_key,
-			$secret_key,
-			$account_id . '.r2.cloudflarestorage.com',
-			'auto',
-			$timestamp,
-			AddressingStyle::Path
-		);
-	}
-
-	/**
-	 * Amazon S3. Virtual-hosted, since path-style is deprecated for
-	 * buckets created in newer regions.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param string   $access_key Access key ID.
-	 * @param string   $secret_key Secret access key.
-	 * @param string   $region     AWS region, e.g. `eu-west-2`.
-	 * @param int|null $timestamp  Fixed signing time, for tests.
-	 *
-	 * @return self
-	 */
-	public static function aws(
-		#[\SensitiveParameter] string $access_key,
-		#[\SensitiveParameter] string $secret_key,
-		string $region,
-		?int $timestamp = null,
-	): self {
-		return new self(
-			$access_key,
-			$secret_key,
-			's3.' . $region . '.amazonaws.com',
-			$region,
-			$timestamp,
-			AddressingStyle::VirtualHosted
-		);
-	}
-
-	/**
-	 * Backblaze B2 via its S3-compatible API. Virtual-hosted.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param string   $access_key Application key ID.
-	 * @param string   $secret_key Application key.
-	 * @param string   $region     B2 region, e.g. `us-west-004`.
-	 * @param int|null $timestamp  Fixed signing time, for tests.
-	 *
-	 * @return self
-	 */
-	public static function backblaze(
-		#[\SensitiveParameter] string $access_key,
-		#[\SensitiveParameter] string $secret_key,
-		string $region,
-		?int $timestamp = null,
-	): self {
-		return new self(
-			$access_key,
-			$secret_key,
-			's3.' . $region . '.backblazeb2.com',
-			$region,
-			$timestamp,
-			AddressingStyle::VirtualHosted
-		);
-	}
-
-	/**
-	 * DigitalOcean Spaces. Virtual-hosted.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param string   $access_key Access key ID.
-	 * @param string   $secret_key Secret access key.
-	 * @param string   $region     Spaces region, e.g. `ams3`.
-	 * @param int|null $timestamp  Fixed signing time, for tests.
-	 *
-	 * @return self
-	 */
-	public static function digitalocean(
-		#[\SensitiveParameter] string $access_key,
-		#[\SensitiveParameter] string $secret_key,
-		string $region,
-		?int $timestamp = null,
-	): self {
-		return new self(
-			$access_key,
-			$secret_key,
-			$region . '.digitaloceanspaces.com',
-			$region,
-			$timestamp,
-			AddressingStyle::VirtualHosted
-		);
-	}
-
-	/**
-	 * MinIO, Ceph, or any self-hosted S3 gateway. Path-style.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param string   $access_key Access key ID.
-	 * @param string   $secret_key Secret access key.
-	 * @param string   $endpoint   Host, optionally with a port.
-	 * @param string   $region     Region label. MinIO defaults to `us-east-1`.
-	 * @param int|null $timestamp  Fixed signing time, for tests.
-	 *
-	 * @return self
-	 */
-	public static function minio(
-		#[\SensitiveParameter] string $access_key,
-		#[\SensitiveParameter] string $secret_key,
-		string $endpoint,
-		string $region = 'us-east-1',
-		?int $timestamp = null,
-	): self {
-		return new self( $access_key, $secret_key, $endpoint, $region, $timestamp, AddressingStyle::Path );
 	}
 
 	/* ─── Presigned URLs (query-string signing) ─────────────────────── */

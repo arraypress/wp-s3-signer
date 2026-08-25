@@ -16,6 +16,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use ArrayPress\S3Signer\AddressingStyle;
 use ArrayPress\S3Signer\Method;
+use ArrayPress\S3Signer\Provider;
 use ArrayPress\S3Signer\Signer;
 
 final class AddressingTest extends TestCase {
@@ -103,51 +104,102 @@ final class AddressingTest extends TestCase {
 		$this->assertStringContainsString( 'my.bucket', $signer->presign_get( 'my.bucket', 'k', 60 ) );
 	}
 
-	/* ─── Provider factories ────────────────────────────────────────── */
+	/* ─── Through the provider enum ─────────────────────────────────── */
 
-	public function test_r2_factory_builds_the_account_endpoint(): void {
-		$url = Signer::r2( self::ACCESS_KEY, self::SECRET_KEY, 'abc123', self::TIMESTAMP )
+	/**
+	 * Every provider is reached through the enum, which is the only place
+	 * that knows an endpoint, a default region or an addressing style.
+	 *
+	 * Signer used to carry five static factories holding a smaller second
+	 * copy of that table — five of the eleven providers, with nothing
+	 * keeping the two in step.
+	 *
+	 * @dataProvider providerProvider
+	 *
+	 * @param Provider $provider   Which provider.
+	 * @param string   $region     Its region, where it has one.
+	 * @param string   $account_id Its account id, where it needs one.
+	 * @param string   $endpoint   Its endpoint, where it needs one.
+	 * @param string   $expected   The URL the presigned GET should start with.
+	 */
+	#[\PHPUnit\Framework\Attributes\DataProvider( 'providerProvider' )]
+	public function test_a_provider_signs_against_its_own_endpoint(
+		Provider $provider,
+		string $region,
+		string $account_id,
+		string $endpoint,
+		string $expected
+	): void {
+		$url = $provider
+			->signer( self::ACCESS_KEY, self::SECRET_KEY, $region, $account_id, $endpoint, self::TIMESTAMP )
+			->presign_get( 'my-bucket', 'k.zip', 60 );
+
+		$this->assertStringStartsWith( $expected, $url );
+	}
+
+	/**
+	 * One row per provider that can be reached without configuration.
+	 *
+	 * @return array<string, array{0: Provider, 1: string, 2: string, 3: string, 4: string}>
+	 */
+	public static function providerProvider(): array {
+		return [
+			'r2'           => [ Provider::R2, '', 'abc123', '', 'https://abc123.r2.cloudflarestorage.com/my-bucket/k.zip?' ],
+			'aws'          => [ Provider::Aws, 'eu-west-2', '', '', 'https://my-bucket.s3.eu-west-2.amazonaws.com/k.zip?' ],
+			'backblaze'    => [ Provider::Backblaze, 'us-west-004', '', '', 'https://my-bucket.s3.us-west-004.backblazeb2.com/k.zip?' ],
+			'digitalocean' => [ Provider::DigitalOcean, 'ams3', '', '', 'https://my-bucket.ams3.digitaloceanspaces.com/k.zip?' ],
+			'minio'        => [ Provider::MinIO, 'us-east-1', '', 'localhost:9000', 'https://localhost:9000/my-bucket/k.zip?' ],
+		];
+	}
+
+	/**
+	 * R2 signs against the account endpoint, in the auto region.
+	 */
+	public function test_r2_uses_the_account_endpoint_and_the_auto_region(): void {
+		$url = Provider::R2
+			->signer( self::ACCESS_KEY, self::SECRET_KEY, '', 'abc123', '', self::TIMESTAMP )
 			->presign_get( 'my-bucket', 'files/a.zip', 60 );
 
 		$this->assertStringStartsWith( 'https://abc123.r2.cloudflarestorage.com/my-bucket/files/a.zip?', $url );
 		$this->assertStringContainsString( '%2Fauto%2Fs3%2Faws4_request', $url );
 	}
 
-	public function test_r2_factory_matches_a_manually_configured_signer(): void {
+	/**
+	 * And matches a signer configured by hand, which is what it saves you.
+	 */
+	public function test_a_provider_matches_a_signer_configured_by_hand(): void {
 		$manual = new Signer( self::ACCESS_KEY, self::SECRET_KEY, 'abc123.r2.cloudflarestorage.com', 'auto', self::TIMESTAMP );
 
 		$this->assertSame(
 			$manual->presign_get( 'my-bucket', 'files/sample.zip', 60 ),
-			Signer::r2( self::ACCESS_KEY, self::SECRET_KEY, 'abc123', self::TIMESTAMP )->presign_get( 'my-bucket', 'files/sample.zip', 60 )
+			Provider::R2
+				->signer( self::ACCESS_KEY, self::SECRET_KEY, '', 'abc123', '', self::TIMESTAMP )
+				->presign_get( 'my-bucket', 'files/sample.zip', 60 )
 		);
 	}
 
-	public function test_aws_factory_is_virtual_hosted_and_region_scoped(): void {
-		$url = Signer::aws( self::ACCESS_KEY, self::SECRET_KEY, 'eu-west-2', self::TIMESTAMP )
-			->presign_get( 'my-bucket', 'k.zip', 60 );
-
-		$this->assertStringStartsWith( 'https://my-bucket.s3.eu-west-2.amazonaws.com/k.zip?', $url );
-		$this->assertStringContainsString( '%2Feu-west-2%2Fs3%2F', $url );
-	}
-
-	public function test_backblaze_factory_endpoint(): void {
-		$this->assertStringStartsWith(
-			'https://my-bucket.s3.us-west-004.backblazeb2.com/k.zip?',
-			Signer::backblaze( self::ACCESS_KEY, self::SECRET_KEY, 'us-west-004', self::TIMESTAMP )->presign_get( 'my-bucket', 'k.zip', 60 )
+	/**
+	 * Signer holds no provider knowledge of its own.
+	 *
+	 * A second table is a second thing to keep in step, and the one that is
+	 * not the enum is the one that goes stale — it covered five providers of
+	 * eleven.
+	 */
+	public function test_the_signer_carries_no_provider_table(): void {
+		// The filter is an OR, not an AND, so the static ones are picked out
+		// afterwards rather than asked for.
+		$methods = array_filter(
+			( new \ReflectionClass( Signer::class ) )->getMethods( \ReflectionMethod::IS_PUBLIC ),
+			static fn( \ReflectionMethod $method ): bool => $method->isStatic()
 		);
-	}
 
-	public function test_digitalocean_factory_endpoint(): void {
-		$this->assertStringStartsWith(
-			'https://my-bucket.ams3.digitaloceanspaces.com/k.zip?',
-			Signer::digitalocean( self::ACCESS_KEY, self::SECRET_KEY, 'ams3', self::TIMESTAMP )->presign_get( 'my-bucket', 'k.zip', 60 )
-		);
-	}
-
-	public function test_minio_factory_is_path_style_and_keeps_the_port(): void {
-		$this->assertStringStartsWith(
-			'https://localhost:9000/my-bucket/k.zip?',
-			Signer::minio( self::ACCESS_KEY, self::SECRET_KEY, 'localhost:9000', 'us-east-1', self::TIMESTAMP )->presign_get( 'my-bucket', 'k.zip', 60 )
+		// content_disposition() is a convenience over ContentDisposition, not
+		// a provider. Anything else static and public here is a factory
+		// carrying a second copy of what Provider knows.
+		$this->assertSame(
+			[ 'content_disposition' ],
+			array_values( array_map( static fn( \ReflectionMethod $method ): string => $method->getName(), $methods ) ),
+			'Signer has picked up a static factory again; that knowledge belongs to Provider.'
 		);
 	}
 
