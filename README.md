@@ -21,6 +21,8 @@ composer require arraypress/wp-s3-signer
 ```
 src/
   Signer.php              signing, and nothing else
+  Data/
+    Regions.php           the region tables, one per provider
   Enums/
     Provider.php          every provider: endpoint, region, addressing, labels
     AddressingStyle.php   where the bucket goes
@@ -114,23 +116,50 @@ itself never does, which is what keeps it testable.
 
 `Provider` knows each provider's endpoint, default region and addressing style:
 
-| Case | Provider | Addressing |
-|------|----------|------------|
-| `Aws` | Amazon S3 | virtual-hosted |
-| `R2` | Cloudflare R2 | path |
-| `Backblaze` | Backblaze B2 | virtual-hosted |
-| `DigitalOcean` | DigitalOcean Spaces | virtual-hosted |
-| `Linode` | Linode Object Storage | virtual-hosted |
-| `Wasabi` | Wasabi | virtual-hosted |
-| `Scaleway` | Scaleway Object Storage | virtual-hosted |
-| `Vultr` | Vultr Object Storage | path |
-| `MegaS4` | MEGA S4 | path |
-| `MinIO` | MinIO (self-hosted) | path |
-| `Other` | Any S3-compatible endpoint | path |
+| Case | Provider | Addressing | Regions |
+|------|----------|------------|---------|
+| `Aws` | Amazon S3 | virtual-hosted | 33 |
+| `R2` | Cloudflare R2 | path | signs as `auto` |
+| `Backblaze` | Backblaze B2 | virtual-hosted | 5 |
+| `DigitalOcean` | DigitalOcean Spaces | virtual-hosted | 11 |
+| `Linode` | Akamai (Linode) Object Storage | virtual-hosted | 20 |
+| `Wasabi` | Wasabi | virtual-hosted | 13 |
+| `Scaleway` | Scaleway Object Storage | virtual-hosted | 3 |
+| `Vultr` | Vultr Object Storage | path | 9 |
+| `MegaS4` | MEGA S4 | path | 4 |
+| `Storj` | Storj | virtual-hosted | one endpoint |
+| `Filebase` | Filebase | virtual-hosted | one endpoint |
+| `GoogleCloud` | Google Cloud Storage | virtual-hosted | one endpoint |
+| `Contabo` | Contabo Object Storage | path | 3 |
+| `Hetzner` | Hetzner Object Storage | virtual-hosted | 3 |
+| `OVHcloud` | OVHcloud Object Storage | virtual-hosted | 8 |
+| `Exoscale` | Exoscale SOS | virtual-hosted | 7 |
+| `IBMCloud` | IBM Cloud Object Storage | virtual-hosted | 9 |
+| `AlibabaOSS` | Alibaba Cloud OSS | virtual-hosted | 17 |
+| `TencentCOS` | Tencent Cloud COS | virtual-hosted | 11 |
+| `MinIO` | MinIO (self-hosted) | path | operator's own |
+| `Other` | Any S3-compatible endpoint | path | operator's own |
 
 Addressing style is not cosmetic. Under virtual-hosted addressing the bucket
 belongs in the `Host` header and must *not* be repeated in the path; under
 path-style the reverse. Signing one and requesting the other fails.
+
+### How the tables were checked
+
+Every host in `Data\Regions` was confirmed by making an HTTPS request to the
+endpoint it produces. Resolving the name proves nothing — every one of these
+provider domains serves wildcard DNS, so an invented region resolves exactly
+like a real one. A live endpoint answers (200, 307, 400 or 403, depending on
+the provider); an invented one gives no response at all.
+
+Addressing style was settled the same way, by asking for
+`some-bucket.<endpoint>`: a provider that supports virtual-hosted addressing
+answers with a not-found, and one that does not fails to connect. That is what
+puts Cloudflare R2 and Contabo on path style.
+
+`Other` covers anything not listed. iDrive e2 belongs there rather than as a
+case of its own — its endpoints carry a per-account instance number, so there
+is no template to write.
 
 ## Relationship to other packages
 

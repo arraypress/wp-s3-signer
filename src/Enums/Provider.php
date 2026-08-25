@@ -12,6 +12,7 @@ declare( strict_types=1 );
 
 namespace ArrayPress\S3Signer\Enums;
 
+use ArrayPress\S3Signer\Data\Regions;
 use ArrayPress\S3Signer\Signer;
 
 /**
@@ -44,6 +45,16 @@ enum Provider: string {
 	case Scaleway     = 'scaleway';
 	case Vultr        = 'vultr';
 	case MegaS4       = 'mega';
+	case Storj        = 'storj';
+	case Filebase     = 'filebase';
+	case GoogleCloud  = 'gcs';
+	case Contabo      = 'contabo';
+	case Hetzner      = 'hetzner';
+	case OVHcloud     = 'ovhcloud';
+	case Exoscale     = 'exoscale';
+	case IBMCloud     = 'ibm';
+	case AlibabaOSS   = 'alibaba';
+	case TencentCOS   = 'tencent';
 	case MinIO        = 'minio';
 	case Other        = 'other';
 
@@ -65,6 +76,16 @@ enum Provider: string {
 			self::Scaleway     => 'Scaleway Object Storage',
 			self::Vultr        => 'Vultr Object Storage',
 			self::MegaS4       => 'MEGA S4',
+			self::Storj        => 'Storj',
+			self::Filebase     => 'Filebase',
+			self::GoogleCloud  => 'Google Cloud Storage',
+			self::Contabo      => 'Contabo Object Storage',
+			self::Hetzner      => 'Hetzner Object Storage',
+			self::OVHcloud     => 'OVHcloud Object Storage',
+			self::Exoscale     => 'Exoscale SOS',
+			self::IBMCloud     => 'IBM Cloud Object Storage',
+			self::AlibabaOSS   => 'Alibaba Cloud OSS',
+			self::TencentCOS   => 'Tencent Cloud COS',
 			self::MinIO        => 'MinIO (self-hosted)',
 			self::Other        => 'Other S3-compatible',
 		};
@@ -116,6 +137,16 @@ enum Provider: string {
 			self::Scaleway     => 'fr-par',
 			self::Vultr        => 'ewr1',
 			self::MegaS4       => 'eu-central-1',
+			self::Contabo      => 'eu2',
+			self::Hetzner      => 'fsn1',
+			self::OVHcloud     => 'gra',
+			self::Exoscale     => 'ch-gva-2',
+			self::IBMCloud     => 'us-south',
+			self::AlibabaOSS   => 'eu-central-1',
+			self::TencentCOS   => 'eu-frankfurt',
+			// A single global endpoint, so the region is only what the
+			// signature is computed against.
+			self::Storj, self::Filebase, self::GoogleCloud => 'us-east-1',
 			self::MinIO, self::Other => 'us-east-1',
 		};
 	}
@@ -123,15 +154,22 @@ enum Provider: string {
 	/**
 	 * The regions this provider offers, as `code => label`.
 	 *
-	 * For a settings dropdown. Empty means there is nothing to choose: R2
-	 * signs everything as `auto`, and a self-hosted endpoint has whatever
-	 * region its operator configured.
+	 * The tables live in Data\Regions; this is the way in. Empty means there
+	 * is nothing to choose -- R2 signs everything as `auto`, a self-hosted
+	 * endpoint has whatever region its operator configured, and a few
+	 * providers run a single global endpoint.
 	 *
-	 * Every code here was checked by resolving the endpoint it produces, so
-	 * the list holds no region that has been retired. It is still a
-	 * convenience for building a form rather than a gate on signing --
-	 * providers add regions without asking, and a region resolving says
-	 * nothing about whether a given account may use it -- so endpoint()
+	 * Every code here was checked by making an HTTPS request to the endpoint
+	 * it produces and confirming something answered. Resolving the name is not
+	 * enough and was the mistake this note used to record: every one of these
+	 * provider domains serves wildcard DNS, so an invented region resolves
+	 * exactly like a real one. A live endpoint answers -- 200, 307, 400 or 403
+	 * depending on the provider -- where an invented one gives no response at
+	 * all.
+	 *
+	 * It is still a convenience for building a form rather than a gate on
+	 * signing: providers add regions without asking, and a region existing
+	 * says nothing about whether a given account may use it, so endpoint()
 	 * accepts any region rather than refusing one merely newer than this.
 	 *
 	 * @since 1.1.0
@@ -139,127 +177,7 @@ enum Provider: string {
 	 * @return array<string, string>
 	 */
 	public function regions(): array {
-		return match ( $this ) {
-			self::Aws => [
-				'us-east-1'      => 'US East (N. Virginia)',
-				'us-east-2'      => 'US East (Ohio)',
-				'us-west-1'      => 'US West (N. California)',
-				'us-west-2'      => 'US West (Oregon)',
-				'ca-central-1'   => 'Canada (Central)',
-				'ca-west-1'      => 'Canada West (Calgary)',
-				'mx-central-1'   => 'Mexico (Central)',
-				'sa-east-1'      => 'South America (Sao Paulo)',
-				'eu-west-1'      => 'Europe (Ireland)',
-				'eu-west-2'      => 'Europe (London)',
-				'eu-west-3'      => 'Europe (Paris)',
-				'eu-central-1'   => 'Europe (Frankfurt)',
-				'eu-central-2'   => 'Europe (Zurich)',
-				'eu-north-1'     => 'Europe (Stockholm)',
-				'eu-south-1'     => 'Europe (Milan)',
-				'eu-south-2'     => 'Europe (Spain)',
-				'af-south-1'     => 'Africa (Cape Town)',
-				'il-central-1'   => 'Israel (Tel Aviv)',
-				'me-south-1'     => 'Middle East (Bahrain)',
-				'me-central-1'   => 'Middle East (UAE)',
-				'ap-east-1'      => 'Asia Pacific (Hong Kong)',
-				'ap-east-2'      => 'Asia Pacific (Taipei)',
-				'ap-south-1'     => 'Asia Pacific (Mumbai)',
-				'ap-south-2'     => 'Asia Pacific (Hyderabad)',
-				'ap-northeast-1' => 'Asia Pacific (Tokyo)',
-				'ap-northeast-2' => 'Asia Pacific (Seoul)',
-				'ap-northeast-3' => 'Asia Pacific (Osaka)',
-				'ap-southeast-1' => 'Asia Pacific (Singapore)',
-				'ap-southeast-2' => 'Asia Pacific (Sydney)',
-				'ap-southeast-3' => 'Asia Pacific (Jakarta)',
-				'ap-southeast-4' => 'Asia Pacific (Melbourne)',
-				'ap-southeast-5' => 'Asia Pacific (Malaysia)',
-				'ap-southeast-7' => 'Asia Pacific (Thailand)',
-			],
-			// B2 assigns a region per account rather than letting one be
-			// picked, so this is for showing the operator which one they are
-			// on. 003 and 005 do not exist, whatever older lists claim.
-			self::Backblaze => [
-				'us-west-000'    => 'US West (000)',
-				'us-west-001'    => 'US West (001)',
-				'us-west-002'    => 'US West (002)',
-				'us-west-004'    => 'US West (004)',
-				'eu-central-003' => 'EU Central (003)',
-			],
-			self::DigitalOcean => [
-				'nyc3' => 'New York City',
-				'sfo2' => 'San Francisco 2',
-				'sfo3' => 'San Francisco 3',
-				'tor1' => 'Toronto',
-				'atl1' => 'Atlanta',
-				'ams3' => 'Amsterdam',
-				'fra1' => 'Frankfurt',
-				'lon1' => 'London',
-				'blr1' => 'Bangalore',
-				'sgp1' => 'Singapore',
-				'syd1' => 'Sydney',
-			],
-			self::Linode => [
-				'us-east-1'      => 'Newark, NJ',
-				'us-iad-1'       => 'Washington, DC',
-				'us-ord-1'       => 'Chicago, IL',
-				'us-lax-1'       => 'Los Angeles, CA',
-				'us-mia-1'       => 'Miami, FL',
-				'us-sea-1'       => 'Seattle, WA',
-				'us-southeast-1' => 'Atlanta, GA',
-				'br-gru-1'       => 'Sao Paulo',
-				'gb-lon-1'       => 'London',
-				'nl-ams-1'       => 'Amsterdam',
-				'fr-par-1'       => 'Paris',
-				'de-fra-1'       => 'Frankfurt',
-				'es-mad-1'       => 'Madrid',
-				'it-mil-1'       => 'Milan',
-				'se-sto-1'       => 'Stockholm',
-				'in-maa-1'       => 'Chennai',
-				'id-cgk-1'       => 'Jakarta',
-				'jp-osa-1'       => 'Osaka',
-				'sg-sin-1'       => 'Singapore',
-				'au-mel-1'       => 'Melbourne',
-			],
-			self::Wasabi => [
-				'us-east-1'      => 'Virginia 1',
-				'us-east-2'      => 'Virginia 2',
-				'us-central-1'   => 'Plano, TX',
-				'us-west-1'      => 'Oregon',
-				'ca-central-1'   => 'Toronto',
-				'eu-west-1'      => 'London',
-				'eu-west-2'      => 'Paris',
-				'eu-central-1'   => 'Amsterdam',
-				'eu-central-2'   => 'Frankfurt',
-				'ap-northeast-1' => 'Tokyo',
-				'ap-northeast-2' => 'Osaka',
-				'ap-southeast-1' => 'Singapore',
-				'ap-southeast-2' => 'Sydney',
-			],
-			self::Scaleway => [
-				'fr-par' => 'Paris',
-				'nl-ams' => 'Amsterdam',
-				'pl-waw' => 'Warsaw',
-			],
-			self::Vultr => [
-				'ewr1' => 'New Jersey',
-				'sjc1' => 'Silicon Valley',
-				'ams1' => 'Amsterdam',
-				'lhr1' => 'London',
-				'blr1' => 'Bangalore',
-				'del1' => 'New Delhi',
-				'sgp1' => 'Singapore',
-				'nrt1' => 'Tokyo',
-				'syd1' => 'Sydney',
-			],
-			self::MegaS4 => [
-				'eu-central-1' => 'Amsterdam',
-				'eu-central-2' => 'Bettembourg',
-				'ca-central-1' => 'Montreal',
-				'ca-west-1'    => 'Vancouver',
-			],
-			// R2 signs as `auto`; MinIO and Other are whatever the operator runs.
-			self::R2, self::MinIO, self::Other => [],
-		};
+		return Regions::for( $this );
 	}
 
 	/**
@@ -301,7 +219,7 @@ enum Provider: string {
 		return match ( $this ) {
 			// A self-hosted MinIO is usually reached by IP or a bare
 			// hostname, where a bucket in the hostname cannot resolve.
-			self::R2, self::Vultr, self::MegaS4, self::MinIO, self::Other => AddressingStyle::Path,
+			self::R2, self::Vultr, self::MegaS4, self::Contabo, self::MinIO, self::Other => AddressingStyle::Path,
 			default                            => AddressingStyle::VirtualHosted,
 		};
 	}
@@ -350,6 +268,16 @@ enum Provider: string {
 			self::Scaleway     => 's3.' . $region . '.scw.cloud',
 			self::Vultr        => $region . '.vultrobjects.com',
 			self::MegaS4       => 's3.' . $region . '.s4.mega.io',
+			self::Storj        => 'gateway.storjshare.io',
+			self::Filebase     => 's3.filebase.com',
+			self::GoogleCloud  => 'storage.googleapis.com',
+			self::Contabo      => $region . '.contabostorage.com',
+			self::Hetzner      => $region . '.your-objectstorage.com',
+			self::OVHcloud     => 's3.' . $region . '.io.cloud.ovh.net',
+			self::Exoscale     => 'sos-' . $region . '.exo.io',
+			self::IBMCloud     => 's3.' . $region . '.cloud-object-storage.appdomain.cloud',
+			self::AlibabaOSS   => 'oss-' . $region . '.aliyuncs.com',
+			self::TencentCOS   => 'cos.' . $region . '.myqcloud.com',
 			default            => throw new \InvalidArgumentException( 'Unhandled provider: ' . $this->value ),
 		};
 	}

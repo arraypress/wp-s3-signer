@@ -41,7 +41,44 @@ final class ProviderTest extends TestCase {
 			'linode'        => array( Provider::Linode, 'eu-central-1', 'eu-central-1.linodeobjects.com' ),
 			'wasabi'        => array( Provider::Wasabi, 'eu-central-1', 's3.eu-central-1.wasabisys.com' ),
 			'scaleway'      => array( Provider::Scaleway, 'nl-ams', 's3.nl-ams.scw.cloud' ),
+			'vultr'         => array( Provider::Vultr, 'ewr1', 'ewr1.vultrobjects.com' ),
+			'mega'          => array( Provider::MegaS4, 'ca-west-1', 's3.ca-west-1.s4.mega.io' ),
+
+			// Every host below was confirmed by making an HTTPS request to it.
+			// Resolving the name proves nothing: these domains all serve
+			// wildcard DNS, so an invented region resolves too.
+			'contabo'       => array( Provider::Contabo, 'usc1', 'usc1.contabostorage.com' ),
+			'hetzner'       => array( Provider::Hetzner, 'nbg1', 'nbg1.your-objectstorage.com' ),
+			'ovhcloud'      => array( Provider::OVHcloud, 'sbg', 's3.sbg.io.cloud.ovh.net' ),
+			'exoscale'      => array( Provider::Exoscale, 'de-fra-1', 'sos-de-fra-1.exo.io' ),
+			'ibm'           => array( Provider::IBMCloud, 'eu-de', 's3.eu-de.cloud-object-storage.appdomain.cloud' ),
+			'alibaba'       => array( Provider::AlibabaOSS, 'eu-central-1', 'oss-eu-central-1.aliyuncs.com' ),
+			'tencent'       => array( Provider::TencentCOS, 'ap-singapore', 'cos.ap-singapore.myqcloud.com' ),
+
+			// One global endpoint each, so the region changes nothing but the
+			// signature.
+			'storj'         => array( Provider::Storj, 'us-east-1', 'gateway.storjshare.io' ),
+			'filebase'      => array( Provider::Filebase, 'us-east-1', 's3.filebase.com' ),
+			'google cloud'  => array( Provider::GoogleCloud, 'us-east-1', 'storage.googleapis.com' ),
 		);
+	}
+
+	/**
+	 * A provider with one global endpoint ignores the region in its host.
+	 *
+	 * The region still matters -- it goes into the credential scope, and a
+	 * signature computed for the wrong one is rejected -- but it must not
+	 * appear in the hostname, which is what would happen if these were given
+	 * a template like everything else.
+	 */
+	public function test_a_single_endpoint_provider_ignores_the_region(): void {
+		foreach ( array( Provider::Storj, Provider::Filebase, Provider::GoogleCloud ) as $provider ) {
+			$this->assertSame(
+				$provider->endpoint( 'us-east-1' ),
+				$provider->endpoint( 'eu-west-1' ),
+				sprintf( '%s put the region in its hostname.', $provider->value )
+			);
+		}
 	}
 
 	/**
@@ -55,7 +92,19 @@ final class ProviderTest extends TestCase {
 		$this->assertSame( AddressingStyle::Path, Provider::MinIO->addressing() );
 		$this->assertSame( AddressingStyle::Path, Provider::Other->addressing() );
 
+		// Contabo serves no wildcard DNS either: a bucket in the hostname does
+		// not resolve, which was confirmed the same way R2's was -- by asking
+		// for one and getting no response, where every virtual-hosted
+		// provider answers with a not-found.
+		$this->assertSame( AddressingStyle::Path, Provider::Contabo->addressing() );
+
 		$this->assertSame( AddressingStyle::VirtualHosted, Provider::Aws->addressing() );
+		$this->assertSame( AddressingStyle::VirtualHosted, Provider::Hetzner->addressing() );
+		$this->assertSame( AddressingStyle::VirtualHosted, Provider::OVHcloud->addressing() );
+		$this->assertSame( AddressingStyle::VirtualHosted, Provider::AlibabaOSS->addressing() );
+		$this->assertSame( AddressingStyle::VirtualHosted, Provider::TencentCOS->addressing() );
+		$this->assertSame( AddressingStyle::VirtualHosted, Provider::IBMCloud->addressing() );
+		$this->assertSame( AddressingStyle::VirtualHosted, Provider::Exoscale->addressing() );
 		$this->assertSame( AddressingStyle::VirtualHosted, Provider::Linode->addressing() );
 		$this->assertSame( AddressingStyle::VirtualHosted, Provider::Wasabi->addressing() );
 	}

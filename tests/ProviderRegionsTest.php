@@ -107,6 +107,59 @@ final class ProviderRegionsTest extends TestCase {
 		$this->assertSame( 's3.eu-west-1.amazonaws.com', Provider::Aws->endpoint( 'eu-west-1' ) );
 	}
 
+	/**
+	 * The tables are data, so they get the checks data needs.
+	 *
+	 * A duplicated code silently loses a region -- the later entry overwrites
+	 * the earlier one and the dropdown is simply one shorter than it should
+	 * be. A duplicated label gives two options a reader cannot tell apart.
+	 *
+	 * @param Provider $provider The provider.
+	 */
+	#[DataProvider( 'providers_with_regions' )]
+	public function test_a_region_table_is_well_formed( Provider $provider ): void {
+		$regions = $provider->regions();
+
+		foreach ( $regions as $code => $label ) {
+			$this->assertIsString( $code );
+			$this->assertNotSame( '', trim( (string) $label ), sprintf( '%s: %s has no label.', $provider->value, $code ) );
+
+			// Codes go into a hostname, so they are limited to what a DNS
+			// label allows.
+			$this->assertMatchesRegularExpression(
+				'/^[a-z0-9][a-z0-9-]*$/',
+				(string) $code,
+				sprintf( '%s: "%s" cannot appear in a hostname.', $provider->value, $code )
+			);
+		}
+
+		$this->assertSame(
+			array(),
+			array_diff_assoc( $regions, array_unique( $regions ) ),
+			sprintf( '%s lists two regions under the same label.', $provider->value )
+		);
+	}
+
+	/**
+	 * Every provider that needs no explicit endpoint can build one.
+	 *
+	 * The check that catches a case added to the enum and nowhere else: the
+	 * match in endpoint() would throw, and only for that one provider.
+	 */
+	public function test_every_provider_can_build_an_endpoint(): void {
+		foreach ( Provider::cases() as $provider ) {
+			if ( $provider->needs_endpoint() ) {
+				continue;
+			}
+
+			$host = $provider->endpoint( '', account_id: 'abc123' );
+
+			$this->assertNotSame( '', $host, sprintf( '%s built an empty host.', $provider->value ) );
+			$this->assertStringNotContainsString( ' ', $host );
+			$this->assertStringNotContainsString( '//', $host );
+		}
+	}
+
 	public function test_options_covers_every_case(): void {
 		$this->assertCount( count( Provider::cases() ), Provider::options() );
 	}
