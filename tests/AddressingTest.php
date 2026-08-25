@@ -14,9 +14,9 @@ namespace ArrayPress\S3Signer\Tests;
 
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
-use ArrayPress\S3Signer\AddressingStyle;
-use ArrayPress\S3Signer\Method;
-use ArrayPress\S3Signer\Provider;
+use ArrayPress\S3Signer\Enums\AddressingStyle;
+use ArrayPress\S3Signer\Enums\Method;
+use ArrayPress\S3Signer\Enums\Provider;
 use ArrayPress\S3Signer\Signer;
 
 final class AddressingTest extends TestCase {

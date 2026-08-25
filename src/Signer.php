@@ -12,6 +12,16 @@ declare( strict_types=1 );
 
 namespace ArrayPress\S3Signer;
 
+use ArrayPress\S3Signer\Enums\AddressingStyle;
+use ArrayPress\S3Signer\Enums\Method;
+use ArrayPress\S3Signer\Enums\Provider;
+use ArrayPress\S3Signer\Models\SignedRequest;
+use ArrayPress\S3Signer\Support\ContentDisposition;
+use ArrayPress\S3Signer\Support\Endpoint;
+use ArrayPress\S3Signer\Support\Headers;
+use ArrayPress\S3Signer\Support\Validate;
+use InvalidArgumentException;
+
 /**
  * Class Signer
  *
@@ -115,7 +125,7 @@ final readonly class Signer {
 	 *                                    path-style; AWS, Backblaze and
 	 *                                    Spaces want virtual-hosted.
 	 *
-	 * @throws \InvalidArgumentException On empty credentials, an unusable
+	 * @throws InvalidArgumentException On empty credentials, an unusable
 	 *                                   endpoint, or a region containing
 	 *                                   characters that would corrupt the
 	 *                                   credential scope.
@@ -130,18 +140,15 @@ final readonly class Signer {
 		private ?int $timestamp = null,
 		private AddressingStyle $addressing = AddressingStyle::Path,
 	) {
-		if ( '' === trim( $access_key ) || '' === trim( $secret_key ) ) {
-			throw new \InvalidArgumentException( 'S3 credentials cannot be empty.' );
+		if ( ! Validate::credential( $access_key ) || ! Validate::credential( $secret_key ) ) {
+			throw new InvalidArgumentException( 'S3 credentials cannot be empty.' );
 		}
 
-		// The region is interpolated into the credential scope, which is
-		// signed. A stray slash there silently produces a scope the
-		// provider will not recognise.
-		if ( 1 !== preg_match( '/^[A-Za-z0-9\-]+$/', $region ) ) {
-			throw new \InvalidArgumentException( 'S3 region must contain only letters, digits and hyphens.' );
+		if ( ! Validate::region( $region ) ) {
+			throw new InvalidArgumentException( 'S3 region must contain only letters, digits and hyphens.' );
 		}
 
-		$this->endpoint = self::normalize_endpoint( $endpoint );
+		$this->endpoint = Endpoint::normalize( $endpoint );
 	}
 
 	/* ─── Presigned URLs (query-string signing) ─────────────────────── */
@@ -241,7 +248,7 @@ final readonly class Signer {
 	 */
 	public function presign( Method $method, string $bucket, string $key = '', array $query = array(), int $expires_seconds = 3600 ): string {
 		if ( $expires_seconds < 1 || $expires_seconds > self::MAX_EXPIRES ) {
-			throw new \InvalidArgumentException(
+			throw new InvalidArgumentException(
 				'Presigned URL lifetime must be between 1 and ' . self::MAX_EXPIRES . ' seconds (7 days).'
 			);
 		}
@@ -250,7 +257,7 @@ final readonly class Signer {
 
 		$scope         = $this->scope( $date );
 		$host          = $this->host_for( $bucket );
-		$canonical_uri = $this->canonical_uri( $bucket, $key );
+		$canonical_uri = Endpoint::canonical_uri( $bucket, $key, $this->addressing );
 
 		$query['X-Amz-Algorithm']     = self::ALGORITHM;
 		$query['X-Amz-Credential']    = $this->access_key . '/' . $scope;
@@ -258,7 +265,7 @@ final readonly class Signer {
 		$query['X-Amz-Expires']       = (string) $expires_seconds;
 		$query['X-Amz-SignedHeaders'] = 'host';
 
-		$canonical_query = $this->canonical_query( $query );
+		$canonical_query = Endpoint::canonical_query( $query );
 
 		$canonical_request = implode(
 			"\n",
@@ -305,47 +312,28 @@ final readonly class Signer {
 
 		$scope         = $this->scope( $date );
 		$host          = $this->host_for( $bucket );
-		$canonical_uri = $this->canonical_uri( $bucket, $key );
+		$canonical_uri = Endpoint::canonical_uri( $bucket, $key, $this->addressing );
 		$digest        = hash( 'sha256', $payload );
 
-		// Caller headers first so the mandatory ones below always win.
-		$signed = array();
+		// The caller's own headers go in first, so the three mandatory ones
+		// always win. Everything about the shape — lower-cased names,
+		// collapsed values, sorted — is Headers', because getting any part
+		// of it wrong produces a SignatureDoesNotMatch that says nothing
+		// about which header it was.
+		$signed = Headers::canonicalize(
+			array_merge(
+				$headers,
+				array(
+					'host'                 => $host,
+					'x-amz-content-sha256' => $digest,
+					'x-amz-date'           => $amz_date,
+				)
+			)
+		);
 
-		foreach ( $headers as $name => $value ) {
-			$name = strtolower( trim( $name ) );
-
-			// A header name outside the RFC 7230 token set would corrupt
-			// the canonical request, and a colon or newline in one is a
-			// header-injection attempt.
-			if ( 1 !== preg_match( '/^[a-z0-9!#$%&\'*+\-.^_`|~]+$/', $name ) ) {
-				throw new \InvalidArgumentException( 'Invalid HTTP header name: ' . $name );
-			}
-
-			// CR/LF in a value would split the request when the caller
-			// hands these to cURL. Reject rather than silently strip, so
-			// a mangled value never gets signed and sent.
-			if ( 1 === preg_match( '/[\r\n\x00]/', $value ) ) {
-				throw new \InvalidArgumentException( 'Header value for "' . $name . '" contains line breaks.' );
-			}
-
-			// SigV4 canonicalisation collapses internal whitespace runs.
-			$signed[ $name ] = trim( (string) preg_replace( '/\s+/', ' ', $value ) );
-		}
-
-		$signed['host']                 = $host;
-		$signed['x-amz-content-sha256'] = $digest;
-		$signed['x-amz-date']           = $amz_date;
-
-		ksort( $signed );
-
-		$canonical_headers = '';
-
-		foreach ( $signed as $name => $value ) {
-			$canonical_headers .= $name . ':' . $value . "\n";
-		}
-
-		$signed_headers  = implode( ';', array_keys( $signed ) );
-		$canonical_query = array() === $query ? '' : $this->canonical_query( $query );
+		$canonical_headers = Headers::block( $signed );
+		$signed_headers    = Headers::names( $signed );
+		$canonical_query   = array() === $query ? '' : Endpoint::canonical_query( $query );
 
 		$canonical_request = implode(
 			"\n",
@@ -505,11 +493,11 @@ final readonly class Signer {
 	 *
 	 * @return SignedRequest
 	 *
-	 * @throws \InvalidArgumentException When no parts are supplied.
+	 * @throws InvalidArgumentException When no parts are supplied.
 	 */
 	public function sign_complete_multipart_upload( string $bucket, string $key, string $upload_id, array $parts ): SignedRequest {
 		if ( array() === $parts ) {
-			throw new \InvalidArgumentException( 'A multipart upload cannot be completed with zero parts.' );
+			throw new InvalidArgumentException( 'A multipart upload cannot be completed with zero parts.' );
 		}
 
 		usort( $parts, static fn( array $a, array $b ): int => ( (int) $a['PartNumber'] ) <=> ( (int) $b['PartNumber'] ) );
@@ -602,34 +590,6 @@ final readonly class Signer {
 	}
 
 	/**
-	 * Strip a scheme, path, and trailing slash from a configured endpoint.
-	 *
-	 * Callers reasonably paste `https://host/` from a dashboard. Signing
-	 * that verbatim produces a `Host` header of `https://host/`, which
-	 * fails with an unhelpful signature error rather than a clear one.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param string $endpoint Raw endpoint.
-	 *
-	 * @return string Bare host, optionally with a port.
-	 *
-	 * @throws \InvalidArgumentException When nothing usable remains.
-	 */
-	private static function normalize_endpoint( string $endpoint ): string {
-		$host = trim( $endpoint );
-		$host = (string) preg_replace( '#^[a-z][a-z0-9+.\-]*://#i', '', $host );
-		$host = explode( '/', $host, 2 )[0];
-		$host = rtrim( $host, '.' );
-
-		if ( '' === $host || 1 !== preg_match( '/^[A-Za-z0-9.\-]+(:\d{1,5})?$/', $host ) ) {
-			throw new \InvalidArgumentException( 'S3 endpoint must be a bare host, e.g. "s3.eu-west-2.amazonaws.com".' );
-		}
-
-		return strtolower( $host );
-	}
-
-	/**
 	 * The `Host` header for a request against a given bucket.
 	 *
 	 * Under virtual-hosted addressing the bucket becomes a DNS label, so
@@ -643,79 +603,10 @@ final readonly class Signer {
 	 *
 	 * @return string
 	 *
-	 * @throws \InvalidArgumentException When the bucket cannot be a DNS label.
+	 * @throws InvalidArgumentException When the bucket cannot be a DNS label.
 	 */
 	private function host_for( string $bucket ): string {
-		if ( AddressingStyle::Path === $this->addressing ) {
-			return $this->endpoint;
-		}
-
-		if ( ! AddressingStyle::is_dns_compatible( $bucket ) ) {
-			throw new \InvalidArgumentException(
-				'Bucket "' . $bucket . '" cannot be used with virtual-hosted addressing: '
-				. 'it must be 3-63 characters of lowercase letters, digits and hyphens, with no dots.'
-			);
-		}
-
-		return $bucket . '.' . $this->endpoint;
-	}
-
-	/**
-	 * Canonical resource path for a bucket and optional key.
-	 *
-	 * Under virtual-hosted addressing the bucket lives in the hostname,
-	 * so it must NOT appear in the path as well.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param string $bucket Bucket name.
-	 * @param string $key    Object key, or '' for the bucket itself.
-	 *
-	 * @return string
-	 */
-	private function canonical_uri( string $bucket, string $key ): string {
-		if ( AddressingStyle::VirtualHosted === $this->addressing ) {
-			return '' === $key ? '/' : '/' . $this->encode_key( $key );
-		}
-
-		$uri = '/' . rawurlencode( $bucket );
-
-		if ( '' !== $key ) {
-			$uri .= '/' . $this->encode_key( $key );
-		}
-
-		return $uri;
-	}
-
-	/**
-	 * Encode an object key for the canonical URI.
-	 *
-	 * Percent-encodes everything, then restores `/` so multi-segment
-	 * keys keep their hierarchy.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param string $key Raw object key. A leading slash is dropped.
-	 *
-	 * @return string
-	 */
-	private function encode_key( string $key ): string {
-		return str_replace( '%2F', '/', rawurlencode( ltrim( $key, '/' ) ) );
-	}
-
-	/**
-	 * Canonical query string: sorted by name, RFC 3986 encoded.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param array<string, string> $query Unencoded parameters.
-	 *
-	 * @return string
-	 */
-	private function canonical_query( array $query ): string {
-		ksort( $query );
-
-		return http_build_query( $query, '', '&', PHP_QUERY_RFC3986 );
+		return Endpoint::host( $this->endpoint, $bucket, $this->addressing );
 	}
 
 	/**

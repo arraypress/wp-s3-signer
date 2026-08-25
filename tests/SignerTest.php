@@ -19,8 +19,8 @@ namespace ArrayPress\S3Signer\Tests;
 
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
-use ArrayPress\S3Signer\ContentDisposition;
-use ArrayPress\S3Signer\Method;
+use ArrayPress\S3Signer\Support\ContentDisposition;
+use ArrayPress\S3Signer\Enums\Method;
 use ArrayPress\S3Signer\Signer;
 
 final class SignerTest extends TestCase {

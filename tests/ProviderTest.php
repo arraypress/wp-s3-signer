@@ -16,8 +16,8 @@ use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
-use ArrayPress\S3Signer\AddressingStyle;
-use ArrayPress\S3Signer\Provider;
+use ArrayPress\S3Signer\Enums\AddressingStyle;
+use ArrayPress\S3Signer\Enums\Provider;
 
 #[CoversClass( Provider::class )]
 final class ProviderTest extends TestCase {

@@ -10,7 +10,9 @@
 
 declare( strict_types=1 );
 
-namespace ArrayPress\S3Signer;
+namespace ArrayPress\S3Signer\Enums;
+
+use ArrayPress\S3Signer\Support\Validate;
 
 /**
  * Enum AddressingStyle
@@ -61,6 +63,6 @@ enum AddressingStyle {
 	 * @return bool
 	 */
 	public static function is_dns_compatible( string $bucket ): bool {
-		return BucketName::is_dns_compatible( $bucket );
+		return Validate::dns_label( $bucket );
 	}
 }

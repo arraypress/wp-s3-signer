@@ -16,6 +16,42 @@ Verified against Cloudflare R2, AWS S3, Backblaze B2 and DigitalOcean Spaces.
 composer require arraypress/wp-s3-signer
 ```
 
+## Layout
+
+```
+src/
+  Signer.php              signing, and nothing else
+  Enums/
+    Provider.php          every provider: endpoint, region, addressing, labels
+    AddressingStyle.php   where the bucket goes
+    Method.php            HTTP verbs
+  Models/
+    SignedRequest.php     what sign() hands back
+  Support/
+    Validate.php          every "is this allowed" question
+    Headers.php           the canonical form SigV4 signs
+    Endpoint.php          host, canonical URI, canonical query
+    Filename.php          basename, extension, byte-safe clamping
+    ContentDisposition.php  what a header can carry, and the ASCII fallback
+    Transport.php         an optional wp_remote_request() bridge
+```
+
+Two lines to draw if you are adding something.
+
+`Validate` holds *questions* — "is this a legal bucket name", "is this a
+region that can go in a credential scope". They used to be regular
+expressions in the middle of a constructor with a comment above each one
+explaining what they were for; the comment is the answer to "what is this
+checking", and a method name is a better one. A test asserts `Signer` calls
+`preg_match()` nowhere at all.
+
+`Filename` holds what is true of a filename whatever it is for.
+`ContentDisposition` holds what is true of a *header*. Clamping a name to two
+hundred bytes without losing its extension is the first; knowing that a
+bidirectional override in a filename is a display-spoofing attack is the
+second.
+
+
 ## Why a signing library
 
 SigV4 is unforgiving in a specific way: the signature covers a *canonical

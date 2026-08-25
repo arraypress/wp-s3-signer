@@ -3,7 +3,7 @@ declare( strict_types=1 );
 
 namespace ArrayPress\S3Signer\Tests;
 
-use ArrayPress\S3Signer\Provider;
+use ArrayPress\S3Signer\Enums\Provider;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 

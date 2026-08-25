@@ -20,7 +20,7 @@ namespace ArrayPress\S3Signer\Tests;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\RequiresPhpExtension;
 use PHPUnit\Framework\TestCase;
-use ArrayPress\S3Signer\ContentDisposition;
+use ArrayPress\S3Signer\Support\ContentDisposition;
 
 final class ContentDispositionTest extends TestCase {
 

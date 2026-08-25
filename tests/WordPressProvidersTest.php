@@ -3,10 +3,10 @@ declare( strict_types=1 );
 
 namespace ArrayPress\S3Signer\Tests;
 
-use ArrayPress\S3Signer\AddressingStyle;
-use ArrayPress\S3Signer\Method;
-use ArrayPress\S3Signer\Provider;
-use ArrayPress\S3Signer\Transport;
+use ArrayPress\S3Signer\Enums\AddressingStyle;
+use ArrayPress\S3Signer\Enums\Method;
+use ArrayPress\S3Signer\Enums\Provider;
+use ArrayPress\S3Signer\Support\Transport;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 

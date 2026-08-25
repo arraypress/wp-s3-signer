@@ -3,18 +3,18 @@ declare( strict_types=1 );
 
 namespace ArrayPress\S3Signer\Tests;
 
-use ArrayPress\S3Signer\BucketName;
+use ArrayPress\S3Signer\Support\Validate;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
  * Bucket name rules.
  */
-final class BucketNameTest extends TestCase {
+final class ValidateTest extends TestCase {
 
 	#[DataProvider( 'valid_names' )]
 	public function test_accepts_legal_names( string $bucket ): void {
-		$this->assertTrue( BucketName::is_valid( $bucket ), $bucket );
+		$this->assertTrue( Validate::bucket( $bucket ), $bucket );
 	}
 
 	public static function valid_names(): array {
@@ -30,7 +30,7 @@ final class BucketNameTest extends TestCase {
 
 	#[DataProvider( 'invalid_names' )]
 	public function test_rejects_illegal_names( string $bucket, string $why ): void {
-		$this->assertFalse( BucketName::is_valid( $bucket ), $why );
+		$this->assertFalse( Validate::bucket( $bucket ), $why );
 	}
 
 	public static function invalid_names(): array {
@@ -55,22 +55,22 @@ final class BucketNameTest extends TestCase {
 	 * questions is what let two validators in this stack disagree.
 	 */
 	public function test_dotted_names_are_valid_but_not_dns_compatible(): void {
-		$this->assertTrue( BucketName::is_valid( 'my.bucket' ) );
-		$this->assertFalse( BucketName::is_dns_compatible( 'my.bucket' ) );
+		$this->assertTrue( Validate::bucket( 'my.bucket' ) );
+		$this->assertFalse( Validate::dns_label( 'my.bucket' ) );
 	}
 
 	public function test_dns_compatibility_implies_validity(): void {
 		foreach ( [ 'downloads', 'my-store', 'abc' ] as $bucket ) {
-			$this->assertTrue( BucketName::is_dns_compatible( $bucket ), $bucket );
-			$this->assertTrue( BucketName::is_valid( $bucket ), $bucket );
+			$this->assertTrue( Validate::dns_label( $bucket ), $bucket );
+			$this->assertTrue( Validate::bucket( $bucket ), $bucket );
 		}
 	}
 
 	public function test_addressing_style_delegates_to_the_same_rule(): void {
 		foreach ( [ 'downloads', 'my.bucket', 'My-Bucket', 'ab' ] as $bucket ) {
 			$this->assertSame(
-				BucketName::is_dns_compatible( $bucket ),
-				\ArrayPress\S3Signer\AddressingStyle::is_dns_compatible( $bucket ),
+				Validate::dns_label( $bucket ),
+				\ArrayPress\S3Signer\Enums\AddressingStyle::is_dns_compatible( $bucket ),
 				$bucket . ' must not have two rules'
 			);
 		}

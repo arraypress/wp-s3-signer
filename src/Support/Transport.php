@@ -10,8 +10,9 @@
 
 declare( strict_types=1 );
 
-namespace ArrayPress\S3Signer;
+namespace ArrayPress\S3Signer\Support;
 
+use ArrayPress\S3Signer\Models\SignedRequest;
 use WP_Error;
 
 /**

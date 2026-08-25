@@ -10,7 +10,7 @@
 
 declare( strict_types=1 );
 
-namespace ArrayPress\S3Signer;
+namespace ArrayPress\S3Signer\Support;
 
 /**
  * Class ContentDisposition
@@ -64,6 +64,33 @@ final readonly class ContentDisposition {
 	private const MAX_BYTES = 200;
 
 	/**
+	 * Control characters: C0, and DEL.
+	 *
+	 * A filename carrying one of these is either corrupt or is trying to
+	 * terminate a header early.
+	 */
+	private const CONTROL = '/[\x00-\x1F\x7F]/u';
+
+	/**
+	 * Characters that are in the name but not on the screen.
+	 *
+	 * Bidirectional overrides, zero-width joiners and spaces, and the byte
+	 * order mark. These are the ingredients of a display-spoofing filename:
+	 * `report\u{202E}fdp.exe` shows as `reportexe.pdf` and is not one.
+	 */
+	private const INVISIBLE = '/[\x{200B}-\x{200F}\x{202A}-\x{202E}\x{2066}-\x{2069}\x{FEFF}]/u';
+
+	/**
+	 * Whitespace, including the non-breaking space that `\s` misses.
+	 */
+	private const WHITESPACE = '/[\s\x{00A0}]+/u';
+
+	/**
+	 * What a header's quoted-string form cannot carry unescaped.
+	 */
+	private const UNQUOTABLE = array( '"', '\\' );
+
+	/**
 	 * Build a complete `Content-Disposition: attachment` value.
 	 *
 	 * @since 1.0.0
@@ -94,7 +121,7 @@ final readonly class ContentDisposition {
 	 * @return string Never empty — falls back to `download`.
 	 */
 	public static function sanitize( string $filename ): string {
-		$name = basename( str_replace( '\\', '/', $filename ) );
+		$name = Filename::basename( $filename );
 
 		// Anything that isn't valid UTF-8 can't be normalised or encoded
 		// meaningfully, so salvage the ASCII from it and move on.
@@ -112,26 +139,16 @@ final readonly class ContentDisposition {
 			}
 		}
 
-		// Control characters (C0 and DEL).
-		$name = (string) preg_replace( '/[\x00-\x1F\x7F]/u', '', $name );
-
-		// Bidi overrides, zero-width joiners/spaces, and the BOM. These
-		// are the ingredients of filename display-spoofing attacks.
-		$name = (string) preg_replace(
-			'/[\x{200B}-\x{200F}\x{202A}-\x{202E}\x{2066}-\x{2069}\x{FEFF}]/u',
-			'',
-			$name
-		);
-
-		// Collapse whitespace runs (including non-breaking space).
-		$name = (string) preg_replace( '/[\s\x{00A0}]+/u', ' ', $name );
+		$name = (string) preg_replace( self::CONTROL, '', $name );
+		$name = (string) preg_replace( self::INVISIBLE, '', $name );
+		$name = (string) preg_replace( self::WHITESPACE, ' ', $name );
 		$name = trim( $name, " \t\n\r\0\x0B." );
 
 		if ( '' === $name ) {
 			return self::FALLBACK;
 		}
 
-		return self::clamp( $name );
+		return Filename::clamp( $name, self::MAX_BYTES );
 	}
 
 	/**
@@ -154,8 +171,7 @@ final readonly class ContentDisposition {
 		// Whatever survived that isn't printable ASCII becomes '_'.
 		$ascii = (string) preg_replace( '/[^\x20-\x7E]/', '_', $ascii );
 
-		// A quoted-string can't contain either of these unescaped.
-		$ascii = str_replace( array( '"', '\\' ), '', $ascii );
+		$ascii = str_replace( self::UNQUOTABLE, '', $ascii );
 
 		// Long underscore runs are what a blanked-out script looks like.
 		$ascii = (string) preg_replace( '/_{2,}/', '_', $ascii );
@@ -167,13 +183,10 @@ final readonly class ContentDisposition {
 
 		// Nothing readable left in the stem — keep the extension, and
 		// give it a generic name rather than returning a bare "wav".
-		if ( '' === trim( pathinfo( $ascii, PATHINFO_FILENAME ), ' _.' ) ) {
-			$extension = pathinfo( '' === $ascii ? $name : $ascii, PATHINFO_EXTENSION );
-			$extension = (string) preg_replace( '/[^A-Za-z0-9]/', '', $extension );
+		if ( '' === trim( Filename::stem( $ascii ), ' _.' ) ) {
+			$extension = Filename::extension( '' === $ascii ? $name : $ascii );
 
-			return '' === $extension
-				? self::FALLBACK
-				: self::FALLBACK . '.' . strtolower( substr( $extension, 0, 10 ) );
+			return '' === $extension ? self::FALLBACK : self::FALLBACK . '.' . $extension;
 		}
 
 		return trim( $ascii, ' _.' );
@@ -233,32 +246,5 @@ final readonly class ContentDisposition {
 		// iconv's TRANSLIT emits things like "?" and "'a" for characters
 		// it can only approximate; strip the noise it leaves behind.
 		return (string) preg_replace( '/[?]+/', '', $result );
-	}
-
-	/**
-	 * Clamp a filename to {@see self::MAX_BYTES}, keeping the extension.
-	 *
-	 * Truncation is multibyte-safe, so a clamped name never ends in half
-	 * a character.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param string $name Sanitised filename.
-	 *
-	 * @return string
-	 */
-	private static function clamp( string $name ): string {
-		if ( strlen( $name ) <= self::MAX_BYTES ) {
-			return $name;
-		}
-
-		$extension = pathinfo( $name, PATHINFO_EXTENSION );
-		$suffix    = '' === $extension ? '' : '.' . substr( $extension, 0, 10 );
-		$stem      = '' === $suffix ? $name : substr( $name, 0, strlen( $name ) - strlen( $suffix ) );
-
-		$budget = self::MAX_BYTES - strlen( $suffix );
-		$stem   = mb_strcut( $stem, 0, max( 1, $budget ), 'UTF-8' );
-
-		return rtrim( $stem, ' .' ) . $suffix;
 	}
 }

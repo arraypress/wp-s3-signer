@@ -10,7 +10,9 @@
 
 declare( strict_types=1 );
 
-namespace ArrayPress\S3Signer;
+namespace ArrayPress\S3Signer\Enums;
+
+use ArrayPress\S3Signer\Signer;
 
 /**
  * Enum Provider
